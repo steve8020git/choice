@@ -140,6 +140,10 @@ textarea.inp { resize: vertical; min-height: 44px; }
 .info { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 14px; margin-bottom: 12px; }
 .info dt { color: var(--faint); }
 .info dd { margin: 0; font-weight: 600; word-break: break-all; }
+.send { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.send b { min-width: 56px; }
+.send .tel { flex: 1; color: var(--sub); font-size: 14px; }
+.send a.btn { text-decoration: none; min-width: 64px; }
 
 .qe-h { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .qe-h .sp { flex: 1; }
@@ -184,7 +188,7 @@ textarea.inp { resize: vertical; min-height: 44px; }
 <script>var BOOT = /*BOOT*/{"api":"https://script.google.com/macros/s/AKfycbyJ8CjGcecyM3KdHFAKblFQyTEej9BYCFyMapHjMNrxEPim44EZEgf8z1NGEhuy6CyX/exec"}/*BOOT*/;</script>
 <script>
 // 화면 버전: Code.js 의 PAGE_VER 와 같아야 한다. 화면을 고쳐 올릴 때마다 둘 다 바꾼다.
-var PAGE_VER = '2026-10-28a';
+var PAGE_VER = '2026-10-28b';
 
 var KIND = { date: ['📅', '날짜'], time: ['⏰', '시간'], place: ['📍', '장소'], menu: ['🍽️', '메뉴'], etc: ['✅', '기타'] };
 var MODE = { one: '1개만', upto: 'N개까지', exact: '정확히 N개', any: '여러 개 (제한 없음)' };
@@ -603,11 +607,38 @@ function adminView(pid, silent) {
       '<div class="acts">' + (isOpen ? '<button class="btn sm pri" data-act="copyInvite">초대 문구 복사</button>' : '') +
       '<button class="btn sm" data-act="editProject" data-id="' + p.id + '">수정</button>' +
       '<button class="btn sm" data-act="toggleStatus" data-id="' + p.id + '">' + (isOpen ? '마감하기' : '다시 열기') + '</button></div></section>' +
-      resultHTML(v, t, true), silent);
+      (isOpen ? sendHTML(v, t) : '') + resultHTML(v, t, true), silent);
   }, function (e) { if (!silent) { toast(e.message); showAdminHome(); } });
 }
 
 function inviteLink(p) { return siteUrl() + '?p=' + p.id; }
+function inviteText(p, name) {
+  return '[약속잡기] ' + p.title + '\n' + (name ? name + ' 님, ' : '') + '아래 링크를 열고 이름을 고른 뒤 선택해 주세요.\n' + inviteLink(p) + '\n비밀번호: ' + p.pw;
+}
+var IS_PHONE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+var IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+function fmtPhone(d) { return String(d).replace(/^(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3'); }
+// 폰의 문자 앱을 받는 사람·내용이 채워진 채로 연다 (아이폰은 &body=, 안드로이드는 ?body=)
+function smsHref(phone, body) { return 'sms:' + phone + (IS_IOS ? '&' : '?') + 'body=' + encodeURIComponent(body); }
+
+// 관리자 결과 화면의 [초대 보내기]: 번호를 적어 둔 사람에게 문자, 아니면 공유하기
+function sendHTML(v, t) {
+  var p = v.project, ph = p.phones || {};
+  var names = p.names.slice().sort(byKo);
+  names = names.filter(function (n) { return t.done.indexOf(n) < 0; }).concat(names.filter(function (n) { return t.done.indexOf(n) >= 0; }));
+  var withPhone = names.filter(function (n) { return ph[n]; }).length;
+  return '<section class="card"><h3>초대 보내기 <small>번호 ' + withPhone + '/' + names.length + '명</small></h3>' +
+    '<p class="hint" style="margin:0 0 10px">' + (IS_PHONE ? '[문자]를 누르면 폰 문자 앱이 받는 사람과 초대 글이 채워진 채로 열려요. [보내기]만 누르세요.'
+      : '이 화면을 <b>폰</b>에서 열면 [문자]로 바로 보낼 수 있어요. PC에서는 [초대 문구 복사]를 쓰세요.') +
+    (withPhone < names.length ? ' 번호는 [수정] → 참가자 명단에 "홍길동 010-1234-5678"처럼 적으면 생겨요.' : '') + '</p>' +
+    names.map(function (n) {
+      var done = t.done.indexOf(n) >= 0;
+      return '<div class="send"><b>' + esc(n) + '</b><span class="tel">' + (ph[n] ? esc(fmtPhone(ph[n])) : '번호 없음') + '</span>' +
+        (done ? '<span class="st open">응답함</span>' : '') +
+        (ph[n] ? '<a class="btn sm' + (done ? '' : ' pri') + '" href="' + esc(smsHref(ph[n], inviteText(p, n))) + '">문자</a>' : '') + '</div>';
+    }).join('') +
+    '<div class="acts" style="margin-top:12px"><button class="btn sm" data-act="shareInvite">' + (navigator.share ? '공유하기 (카톡 등)' : '초대 문구 복사') + '</button></div></section>';
+}
 
 /* ───────── 프로젝트 만들기·고치기 ───────── */
 
@@ -628,16 +659,28 @@ function startEdit(src, asCopy) {
     });
     S.edit = {
       id: asCopy ? '' : p.id, title: asCopy ? p.title + ' (복사)' : p.title, desc: p.desc, pw: p.pw,
-      names: p.names.join('\n'), allowJoin: p.allowJoin, questions: clone(p.questions), votes: votes
+      names: rosterText(p), allowJoin: p.allowJoin, questions: clone(p.questions), votes: votes
     };
   }
   S.editStart = JSON.stringify(S.edit);
   showEditor(false);
 }
 
+// 명단 글: 한 줄에 "홍길동" 또는 "홍길동 010-1234-5678"
+function rosterText(p) {
+  var ph = p.phones || {};
+  return p.names.map(function (n) { return ph[n] ? n + ' ' + fmtPhone(ph[n]) : n; }).join('\n');
+}
+var PHONE_RE = /(01[016789])[-.\s]?(\d{3,4})[-.\s]?(\d{4})/;
 function countNames(text) {
-  var seen = {};
-  return String(text || '').split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(function (s) { if (!s || seen[s]) return false; seen[s] = 1; return true; }).length;
+  var seen = {}, n = 0, tel = 0;
+  String(text || '').split(/[\n,]+/).forEach(function (s) {
+    var m = s.match(PHONE_RE);
+    if (m) tel++;
+    s = (m ? s.replace(m[0], '') : s).replace(/\s+/g, ' ').trim();
+    if (s && !seen[s]) { seen[s] = 1; n++; }
+  });
+  return n + '명' + (tel ? ' · 번호 ' + tel + '개' : '');
 }
 
 function showEditor(keepScroll) {
@@ -649,8 +692,9 @@ function showEditor(keepScroll) {
     '<label class="lb">제목</label><input class="inp" data-bind="title" maxlength="60" placeholder="예) 11월 팀 회식" value="' + esc(e.title) + '">' +
     '<label class="lb">안내 <small>참가자에게 보이는 설명. 결정되면 여기에 공지해도 좋아요.</small></label><textarea class="inp" data-bind="desc" rows="3" maxlength="1000" placeholder="예) 금요일까지 골라 주세요!">' + esc(e.desc) + '</textarea>' +
     '<label class="lb">참가자 비밀번호 <small>숫자 4~8자리 · 이 프로젝트 참가자 모두 같은 비밀번호</small></label><input class="inp pw" data-bind="pw" inputmode="numeric" maxlength="8" value="' + esc(e.pw) + '"></section>' +
-    '<section class="card"><h3>참가자 명단 <small id="nameCount">' + countNames(e.names) + '명</small></h3>' +
-    '<textarea class="inp" data-bind="names" rows="6" placeholder="한 줄에 한 명씩 (쉼표로 나눠도 됩니다)">' + esc(e.names) + '</textarea>' +
+    '<section class="card"><h3>참가자 명단 <small id="nameCount">' + countNames(e.names) + '</small></h3>' +
+    '<textarea class="inp" data-bind="names" rows="6" placeholder="한 줄에 한 명씩&#10;홍길동 010-1234-5678&#10;김철수">' + esc(e.names) + '</textarea>' +
+    '<p class="hint" style="margin:-4px 0 10px">이름 옆에 휴대폰 번호를 적으면 결과·초대 화면에서 [문자]로 바로 보낼 수 있어요. 번호는 관리자만 봅니다.</p>' +
     (past.length ? '<select class="inp" id="loadNames"><option value="">지난 프로젝트 명단 불러오기…</option>' + past.map(function (p) {
       return '<option value="' + p.id + '">' + esc(p.title) + ' (' + p.names.length + '명)</option>';
     }).join('') + '</select>' : '') +
@@ -831,9 +875,12 @@ var ACT = {
       busy(el, function () { return call('apiDeleteProject', S.adminPw, p.id).then(function () { toast('지웠습니다.'); return reloadAdmin().then(showAdminHome); }); });
     });
   },
-  copyInvite: function () {
-    var p = S.aview.project;
-    copyText('[약속잡기] ' + p.title + '\n' + inviteLink(p) + '\n비밀번호: ' + p.pw + '\n링크를 열고 이름을 고른 뒤 선택해 주세요.');
+  copyInvite: function () { copyText(inviteText(S.aview.project)); },
+  // 폰의 공유 창(카톡·문자 등). 공유 창이 없는 브라우저는 복사로
+  shareInvite: function () {
+    var p = S.aview.project, text = inviteText(p);
+    if (!navigator.share) return copyText(text);
+    navigator.share({ title: p.title, text: text }).catch(function (e) { if (e && e.name !== 'AbortError') copyText(text); });
   },
   clearAnswer: function (el) {
     var name = el.dataset.name, p = S.aview.project;
@@ -936,7 +983,7 @@ document.addEventListener('input', function (ev) {
   if (S.screen !== 'editor' || t.tagName === 'SELECT' || t.type === 'checkbox') return;
   if (t.dataset.bind) {
     S.edit[t.dataset.bind] = t.value;
-    if (t.dataset.bind === 'names') $('#nameCount').textContent = countNames(t.value) + '명';
+    if (t.dataset.bind === 'names') $('#nameCount').textContent = countNames(t.value);
   } else if (t.dataset.o !== undefined) S.edit.questions[+t.dataset.q].options[+t.dataset.o].text = t.value;
   else if (t.dataset.f === 'title') S.edit.questions[+t.dataset.q].title = t.value;
   else if (t.dataset.f === 'n') S.edit.questions[+t.dataset.q].n = Math.max(1, parseInt(t.value, 10) || 1);
@@ -946,7 +993,7 @@ document.addEventListener('change', function (ev) {
   if (S.screen !== 'editor') return;
   if (t.id === 'loadNames' && t.value) {
     var p = S.admin.projects.filter(function (x) { return x.id === t.value; })[0];
-    S.edit.names = p.names.join('\n');
+    S.edit.names = rosterText(p);
     toast(p.names.length + '명을 불러왔어요. 빼거나 더할 수 있어요.');
     return showEditor(true);
   }

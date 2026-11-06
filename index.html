@@ -211,6 +211,10 @@ details summary { cursor: pointer; color: var(--sub); font-size: 13px; margin-to
 .hsum { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--ink); font-size: 16px; list-style: none; }
 .hsum::-webkit-details-marker { display: none; }
 .hwin { margin-left: auto; font-size: 14px; color: var(--top-ink); font-weight: 600; }
+.mypick { background: var(--bg); border-radius: 12px; padding: 10px 14px; margin: 12px auto 4px; max-width: 420px; text-align: left; font-size: 15px; }
+.mypick b { color: var(--pri); }
+.dlg .inp { margin-bottom: 8px; }
+.send .link { font-size: 13px; }
 
 .center { text-align: center; padding: 80px 0; color: var(--sub); }
 .spin { width: 34px; height: 34px; margin: 0 auto 14px; border: 3px solid var(--line); border-top-color: var(--pri); border-radius: 50%; animation: sp 0.8s linear infinite; }
@@ -234,7 +238,7 @@ details summary { cursor: pointer; color: var(--sub); font-size: 13px; margin-to
 <script>var BOOT = /*BOOT*/{"api":"https://script.google.com/macros/s/AKfycbyJ8CjGcecyM3KdHFAKblFQyTEej9BYCFyMapHjMNrxEPim44EZEgf8z1NGEhuy6CyX/exec"}/*BOOT*/;</script>
 <script>
 // 화면 버전: Code.js 의 PAGE_VER 와 같아야 한다. 화면을 고쳐 올릴 때마다 둘 다 바꾼다.
-var PAGE_VER = '2026-11-06b';
+var PAGE_VER = '2026-11-06c';
 
 var KIND = { date: ['📅', '날짜'], time: ['⏰', '시간'], place: ['📍', '장소'], menu: ['🍽️', '메뉴'], person: ['🏆', '사람 뽑기'], etc: ['✅', '기타'] };
 var MODE = { one: '1개만', upto: 'N개까지', exact: '정확히 N개', any: '여러 개 (제한 없음)' };
@@ -403,20 +407,24 @@ function showJoin(pid) {
     var names = j.names.slice().sort(byKo);
     var many = S.init && S.init.projects.length > 1;
     render('<div class="top"><div class="top-l">' + (many ? '<button class="link" data-act="home">‹ 목록</button>' : '') + '</div></div>' +
-      '<header class="ph"><h1>' + esc(j.title) + (j.anon ? '<span class="tag">무기명</span>' : '') + '</h1>' + (j.desc ? '<div class="desc">' + nl(j.desc) + '</div>' : '') + '</header>' +
+      '<header class="ph"><h1>' + esc(j.title) + (j.type === 'select' ? '<span class="tag sel">선정하기</span>' : j.anon ? '<span class="tag">무기명</span>' : '') + '</h1>' + (j.desc ? '<div class="desc">' + nl(j.desc) + '</div>' : '') + '</header>' +
       (j.type === 'select' ? '<div class="lock">🏆 <b>선정하기</b> · 후보를 추천하고 무기명으로 투표해요. 누가 누구를 뽑았는지는 관리자도 볼 수 없어요.</div>' : j.anon ? '<div class="lock">🔒 <b>무기명 투표</b>예요. 이름은 한 번만 투표하게 하려고 확인할 뿐, 누가 무엇을 골랐는지는 관리자도 볼 수 없어요.</div>' : '') +
       '<section class="card"><h3>1. 내 이름을 고르세요</h3><div class="names">' +
       names.map(function (n) { return '<button class="chip" data-act="pickName" data-name="' + esc(n) + '">' + esc(n) + '</button>'; }).join('') +
       (j.allowJoin ? '<button class="chip add" data-act="newName">+ 명단에 없어요</button>' : '') + '</div>' +
       '<div id="newBox" style="display:none"><input id="newName" class="inp" maxlength="20" placeholder="내 이름을 적어 주세요">' +
       '<input id="newPhone" class="inp" type="tel" inputmode="tel" maxlength="13" placeholder="휴대폰 번호 (선택) 010-0000-0000"></div>' +
-      '<h3>2. 비밀번호</h3><input id="pw" class="inp pw" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="••••">' +
+      (pinMode(j) ? '<h3 id="pwH">2. 내 비밀번호</h3><p class="hint" id="pwHint" style="margin:-4px 0 8px">처음엔 <b>휴대폰 번호 뒷자리 4자리</b>예요. 들어간 뒤 [비밀번호 바꾸기]로 바꿀 수 있어요.</p>'
+        : '<h3>2. 비밀번호</h3>') +
+      '<input id="pw" class="inp pw" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="••••">' +
       '<p class="err" id="err"></p><button class="btn pri wide" data-act="enter">들어가기</button></section>' + FOOT);
   }, function (e) {
     toast(e.message);
     if (S.init) showHome(); else boot();
   });
 }
+
+function pinMode(p) { return !!(p && (p.anon || p.type === 'select')); }
 
 function doEnter(btn) {
   var j = S.join.p;
@@ -428,7 +436,11 @@ function doEnter(btn) {
   err.textContent = '';
   return busy(btn, function () {
     return call('apiEnter', j.id, name, pw, S.join.isNew, S.join.isNew ? $('#newPhone').value.trim() : '').then(function (v) {
-      remember(j.id, v.me, pw);
+      // 무기명·선정하기에 새로 가입했으면 다음부터 비밀번호는 휴대폰 뒷자리 4자리
+      var ph = S.join.isNew ? $('#newPhone').value.replace(/[^\d]/g, '') : '';
+      var myPw = pinMode(j) && S.join.isNew && ph.length >= 4 ? ph.slice(-4) : pw;
+      remember(j.id, v.me, myPw);
+      if (myPw !== pw) { pw = myPw; toast('가입했어요. 다음부터 비밀번호는 휴대폰 뒷자리 4자리예요.'); }
       enterView(v, pw);
     }, function (e) { err.textContent = e.message; });
   });
@@ -440,14 +452,14 @@ function enterView(v, pw) {
   S.view = v; S.pw = pw;
   var mine = v.responses[v.me];
   S.tab = v.project.type === 'select' ? 'sel' : mine && mine.done && !v.project.anon && !v.hidden ? 'result' : 'mine';
-  S.nom = null;
+  S.nom = null; S.changing = false;
   resetDraft();
   setUrl({ p: v.project.id });
   showProject(false);
 }
 
 function resetDraft() {
-  var v = S.view, mine = v.responses[v.me];
+  var v = S.view, mine = v.myBallot || v.responses[v.me];
   S.draft = {};
   v.project.questions.forEach(function (q) { S.draft[q.id] = ((mine && mine.answers[q.id]) || []).slice(); });
   S.memo = mine ? mine.memo || '' : '';
@@ -455,7 +467,7 @@ function resetDraft() {
 
 function dirty() {
   if (!S.view || !S.draft) return false;
-  var v = S.view, mine = v.responses[v.me];
+  var v = S.view, mine = v.myBallot || v.responses[v.me];
   if ((S.memo || '').trim() !== ((mine && mine.memo) || '')) return true;
   return v.project.questions.some(function (q) {
     var a = (S.draft[q.id] || []).slice().sort().join(), b = ((mine && mine.answers[q.id]) || []).slice().sort().join();
@@ -489,7 +501,7 @@ function showProject(keepScroll) {
   var v = S.view, p = v.project, t = tally(v, S.tab === 'mine');
   var many = S.init && S.init.projects.length > 1;
   render('<div class="top"><div class="top-l">' + (many ? '<button class="link" data-act="home">‹ 목록</button>' : '') + '</div>' +
-    '<div class="top-r"><span class="who">' + esc(v.me) + ' 님</span><button class="link" data-act="logout">다른 이름으로</button></div></div>' +
+    '<div class="top-r"><span class="who">' + esc(v.me) + ' 님</span>' + (v.project.pin ? '<button class="link" data-act="changePin">비밀번호 바꾸기</button>' : '') + '<button class="link" data-act="logout">다른 이름으로</button></div></div>' +
     '<header class="ph"><h1>' + esc(p.title) + (p.anon ? '<span class="tag">무기명</span>' : '') + '</h1>' + (p.desc ? '<div class="desc">' + nl(p.desc) + '</div>' : '') + '</header>' +
     '<div class="tabs"><button class="' + (S.tab === 'mine' ? 'on' : '') + '" data-act="tab" data-tab="mine">' + (p.anon ? '투표하기' : '내 선택') + '</button>' +
     '<button class="' + (S.tab === 'result' ? 'on' : '') + '" data-act="tab" data-tab="result">결과 보기 <small>' + t.done.length + '/' + p.names.length + '명</small></button></div>' +
@@ -521,11 +533,11 @@ function optBtn(v, q, o, sel, right) {
 // 무기명 투표 화면: 한 번 내면 끝. 낸 뒤에는 무엇을 골랐는지도 보여 주지 않는다(서버도 모름).
 function anonMineHTML(v, t) {
   var mine = v.responses[v.me];
-  if (mine && mine.done) {
-    return '<section class="card voted"><div class="big-ic">🗳️</div><h3>투표를 마쳤어요</h3>' +
-      '<p>무기명이라 누가 무엇을 골랐는지 아무도(관리자도) 볼 수 없어요.<br>' + (v.hidden ? '결과는 관리자가 발표해요.' : '[결과 보기]에서 지금까지의 표를 볼 수 있어요.') + '</p></section>';
+  if (mine && mine.done && !S.changing) {
+    return '<section class="card voted"><div class="big-ic">🗳️</div><h3>투표를 마쳤어요</h3>' + myPickHTML(v) +
+      '<p>무기명이라 누가 무엇을 골랐는지 아무도(관리자도) 볼 수 없어요.<br>' + (v.hidden ? '결과는 관리자가 발표해요.' : '[결과 보기]에서 지금까지의 표를 볼 수 있어요.') + '</p>' + changeBtn(v) + '</section>';
   }
-  return '<div class="lock">🔒 <b>무기명 투표</b> · 한 번만 낼 수 있고, 낸 뒤에는 바꿀 수 없어요.' + (v.project.noSelf ? ' 본인은 뽑을 수 없어요.' : '') + '</div>' +
+  return '<div class="lock">🔒 <b>무기명 투표</b> · 마감 전까지는 언제든 다시 바꿀 수 있어요.' + (v.project.noSelf ? ' 본인은 뽑을 수 없어요.' : '') + '</div>' +
     v.project.questions.map(function (q) {
       var sel = S.draft[q.id] || [];
       return '<section class="card"><div class="qh"><span class="kind">' + KIND[q.kind][0] + ' ' + KIND[q.kind][1] + '</span><span class="rule">' + ruleText(q) + '</span></div>' +
@@ -534,6 +546,21 @@ function anonMineHTML(v, t) {
     }).join('') +
     '<section class="card"><h3>남길 말 <small>(안 써도 돼요 · 이름 없이 순서를 섞어 보여요)</small></h3><textarea id="memo" class="inp" maxlength="200" rows="2" placeholder="예) 추천 이유">' + esc(S.memo) + '</textarea></section>' +
     '<div class="savebar"><div><span>' + countPicked() + '개 골랐어요</span><button class="btn pri" data-act="vote"' + (countPicked() ? '' : ' disabled') + '>투표하기</button></div></div>';
+}
+// 내가 고른 것(나에게만 보임) + [투표 바꾸기]
+function myPickHTML(v) {
+  var b = v.myBallot;
+  if (!b) return '';
+  var lines = v.project.questions.map(function (q) {
+    var ids = b.answers[q.id] || [];
+    return (v.project.questions.length > 1 ? esc(q.title) + ': ' : '') + '<b>' + (ids.length ? ids.map(function (id) { return esc(optText(q, id)); }).join(', ') : '기권') + '</b>';
+  });
+  return '<div class="mypick">내 선택 (나만 보여요)<br>' + lines.join('<br>') + (b.memo ? '<br><small>💬 ' + esc(b.memo) + '</small>' : '') + '</div>';
+}
+function changeBtn(v) {
+  var p = v.project;
+  var open = p.status === 'open' && (p.type !== 'select' || p.phase === 'vote');
+  return open && v.myBallot ? '<div class="acts" style="justify-content:center;margin-top:12px"><button class="btn sm pri" data-act="changeVote">투표 바꾸기</button></div>' : '';
 }
 function countPicked() { return Object.keys(S.draft || {}).reduce(function (a, k) { return a + S.draft[k].length; }, 0); }
 
@@ -647,13 +674,14 @@ function vote(btn) {
     var ids = S.draft[q.id];
     return '· ' + q.title + ': ' + (ids.length ? ids.map(function (id) { return optText(q, id); }).join(', ') : '(고르지 않음)');
   }).join('\n');
-  ask('이대로 투표할까요? 낸 뒤에는 바꿀 수 없어요.\n\n' + lines + (empty.length ? '\n\n고르지 않은 질문은 기권으로 처리돼요.' : ''), '투표하기').then(function (ok) {
+  ask('이대로 투표할까요?' + (v.project.anon ? ' 마감 전까지는 다시 바꿀 수 있어요.' : '') + '\n\n' + lines + (empty.length ? '\n\n고르지 않은 질문은 기권으로 처리돼요.' : ''), '투표하기').then(function (ok) {
     if (!ok) return;
     busy(btn, function () {
       return call('apiSave', v.project.id, v.me, S.pw, S.draft, S.memo).then(function (nv) {
+        var again = S.changing; S.changing = false;
         S.view = nv; resetDraft(); S.tab = nv.project.type === 'select' ? 'sel' : nv.hidden ? 'mine' : 'result';
         showProject(false);
-        toast('투표했습니다 ✓');
+        toast(again ? '투표를 바꿨습니다 ✓' : '투표했습니다 ✓');
       });
     });
   });
@@ -746,7 +774,7 @@ function adminView(pid, silent) {
     render('<div class="top"><div class="top-l"><button class="link" data-act="adminHome">‹ 프로젝트 목록</button></div></div>' +
       '<header class="ph"><h1>' + esc(p.title) + (p.anon ? '<span class="tag">무기명</span>' : '') + '</h1>' + (p.desc ? '<div class="desc">' + nl(p.desc) + '</div>' : '') + '</header>' +
       '<section class="card"><dl class="info"><dt>방식</dt><dd>' + modeText(p) + '</dd><dt>상태</dt><dd>' + (isOpen ? '진행 중' : '마감 (' + shortDate(p.closedAt) + ')') + '</dd>' +
-      '<dt>비밀번호</dt><dd>' + esc(p.pw) + '</dd><dt>링크</dt><dd>' + esc(inviteLink(p)) + '</dd></dl>' +
+      '<dt>비밀번호</dt><dd>' + pwInfo(p) + '</dd><dt>링크</dt><dd>' + esc(inviteLink(p)) + '</dd></dl>' +
       '<div class="acts">' + (isOpen ? '<button class="btn sm pri" data-act="copyInvite">초대 문구 복사</button>' : '') +
       '<button class="btn sm" data-act="editProject" data-id="' + p.id + '">수정</button>' +
       '<button class="btn sm" data-act="toggleStatus" data-id="' + p.id + '">' + (isOpen ? '마감하기' : '다시 열기') + '</button></div></section>' +
@@ -758,9 +786,16 @@ function modeText(p) {
   return (p.anon ? '무기명 투표 (한 번만, 누가 골랐는지 안 보임)' : '기명 (누가 무엇을 골랐는지 보임)') +
     (p.noSelf ? ' · 본인 제외' : '') + ' · 결과 ' + (p.reveal === 'admin' ? '관리자만 봄' : '참가자도 봄');
 }
+function pwInfo(p) {
+  return p.pin ? '개인 비밀번호 — 처음엔 휴대폰 뒷자리 4자리, 각자 바꿀 수 있음<br><small>번호 없는 사람·새로 가입하는 사람: ' + esc(p.pw) + '</small>' : esc(p.pw);
+}
 function inviteLink(p) { return siteUrl() + '?p=' + p.id; }
 function inviteText(p, name) {
-  return '[선택하기] ' + p.title + '\n' + (name ? name + ' 님, ' : '') + (p.type === 'select' ? '아래 링크를 열고 이름을 고른 뒤 후보 추천·투표에 참여해 주세요.\n' : '아래 링크를 열고 이름을 고른 뒤 선택해 주세요.\n') + inviteLink(p) + '\n비밀번호: ' + p.pw;
+  var ph = p.phones || {};
+  var pwLine = !p.pin ? '비밀번호: ' + p.pw
+    : name ? (ph[name] ? '비밀번호: 휴대폰 번호 뒷자리 4자리 (들어간 뒤 바꿀 수 있어요)' : '비밀번호: ' + p.pw + ' (들어간 뒤 바꿀 수 있어요)')
+    : '비밀번호: 휴대폰 번호 뒷자리 4자리\n(번호를 등록하지 않았거나 명단에 없으면 ' + p.pw + ')';
+  return '[선택하기] ' + p.title + '\n' + (name ? name + ' 님, ' : '') + (p.type === 'select' ? '아래 링크를 열고 이름을 고른 뒤 후보 추천·투표에 참여해 주세요.\n' : '아래 링크를 열고 이름을 고른 뒤 선택해 주세요.\n') + inviteLink(p) + '\n' + pwLine;
 }
 var IS_PHONE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 var IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -782,6 +817,7 @@ function sendHTML(v, t) {
       var done = t.done.indexOf(n) >= 0;
       return '<div class="send"><b>' + esc(n) + '</b><span class="tel">' + (ph[n] ? esc(fmtPhone(ph[n])) : '번호 없음') + '</span>' +
         (done ? '<span class="st open">응답함</span>' : '') +
+        (p.pin && v.pinChanged && v.pinChanged[n] ? '<button class="link" data-act="resetPin" data-name="' + esc(n) + '" title="비밀번호를 바꾼 사람">비번 초기화</button>' : '') +
         (ph[n] ? '<a class="btn sm' + (done ? '' : ' pri') + '" href="' + esc(smsHref(ph[n], inviteText(p, n))) + '">문자</a>' : '') + '</div>';
     }).join('') +
     '<div class="acts" style="margin-top:12px"><button class="btn sm" data-act="shareInvite">' + (navigator.share ? '공유하기 (카톡 등)' : '초대 문구 복사') + '</button></div></section>';
@@ -884,7 +920,7 @@ function showEditor(keepScroll) {
     '<label class="ck"><input type="checkbox" data-bind="allowJoin"' + (e.allowJoin ? ' checked' : '') + '> 명단에 없는 사람이 이름을 직접 추가할 수 있게</label></section>' +
     '<section class="card"><h3>투표 방식</h3>' +
     '<label class="ck"><input type="checkbox" data-bind="anon"' + (e.anon ? ' checked' : '') + '> 🔒 무기명 투표</label>' +
-    '<p class="hint">누가 무엇을 골랐는지 관리자도 볼 수 없어요. 표는 이름 없이 숫자로만 쌓이고, 한 사람이 한 번만 낼 수 있어요(낸 뒤 못 바꿈). 수상자 선정 같은 투표에 쓰세요.</p>' +
+    '<p class="hint">누가 무엇을 골랐는지 관리자도 볼 수 없어요. 멤버는 개인 비밀번호(처음엔 휴대폰 뒷자리 4자리)로 들어오고, 마감 전까지 자기 표를 바꿀 수 있어요. 수상자 선정 같은 투표에 쓰세요.</p>' +
     '<div class="opt-set"><label class="ck"><input type="checkbox" data-bind="noSelf"' + (e.noSelf ? ' checked' : '') + '> 본인은 뽑을 수 없게</label>' +
     '<p class="hint">선택지 이름이 투표하는 사람 이름과 같으면 고를 수 없어요.</p></div>' +
     '<div class="opt-set"><label class="lb" style="margin-top:0">결과 보기</label><select class="inp" data-bind="reveal">' +
@@ -1074,12 +1110,12 @@ function showSel(keepScroll) {
   var body = '';
   if (S.tab === 'hist') body = historyHTML(v);
   else if (ph === 'nominate') body = nominateHTML(v);
-  else if (ph === 'vote') body = mine && mine.done ? votedHTML(v) : selVoteHTML(v);
+  else if (ph === 'vote') body = mine && mine.done && !S.changing ? votedHTML(v) : selVoteHTML(v);
   else if (ph === 'closed') body = '<section class="card sum"><div class="big">' + tally(v, false).done.length + '<small>/ ' + p.names.length + '명 투표</small></div>' +
     '<p class="wait">' + (mine && mine.done ? '✅ 나도 투표했어요.' : '투표하지 않았어요.') + ' 결과 발표를 기다려 주세요.</p></section>' + candListHTML(v, false);
   else body = '<section class="card"><h3>🏆 ' + esc(p.title) + ' 결과</h3>' + rankHTML(v.result, false) + '</section>';
   render('<div class="top"><div class="top-l">' + (many ? '<button class="link" data-act="home">‹ 목록</button>' : '') + '</div>' +
-    '<div class="top-r"><span class="who">' + esc(v.me) + ' 님</span><button class="link" data-act="logout">다른 이름으로</button></div></div>' +
+    '<div class="top-r"><span class="who">' + esc(v.me) + ' 님</span>' + (v.project.pin ? '<button class="link" data-act="changePin">비밀번호 바꾸기</button>' : '') + '<button class="link" data-act="logout">다른 이름으로</button></div></div>' +
     '<header class="ph"><h1>' + esc(p.title) + selTag(p) + '</h1>' + (p.desc ? '<div class="desc">' + nl(p.desc) + '</div>' : '') + '</header>' +
     phaseBanner(p, false) +
     (hist ? '<div class="tabs"><button class="' + (S.tab === 'sel' ? 'on' : '') + '" data-act="tab" data-tab="sel">이번 회차</button>' +
@@ -1112,14 +1148,14 @@ function nominateHTML(v) {
 }
 
 function votedHTML(v) {
-  return '<section class="card voted"><div class="big-ic">🗳️</div><h3>투표를 마쳤어요</h3><p>무기명이라 누가 누구를 뽑았는지 아무도(관리자도) 볼 수 없어요.<br>결과는 마감 뒤 관리자가 공개해요.</p></section>' + candListHTML(v, false);
+  return '<section class="card voted"><div class="big-ic">🗳️</div><h3>투표를 마쳤어요</h3>' + myPickHTML(v) + '<p>무기명이라 누가 누구를 뽑았는지 아무도(관리자도) 볼 수 없어요.<br>마감 전까지는 바꿀 수 있고, 결과는 마감 뒤 관리자가 공개해요.</p>' + changeBtn(v) + '</section>' + candListHTML(v, false);
 }
 
 function selVoteHTML(v) {
   var p = v.project, q = p.questions[0], sel = S.draft[q.id] || [];
   var byId = {}; (v.cands || []).forEach(function (c) { byId[c.id] = c; });
   if (!q.options.length) return '<div class="card empty">후보가 없어요.</div>';
-  return '<div class="lock">🔒 무기명 · 한 번만 낼 수 있고 낸 뒤 바꿀 수 없어요. <b>' + ruleSel(p) + '</b>' + ((p.votes || 1) > 1 ? ' (최대 ' + q.n + '명까지 고를 수 있어요)' : '') + '</div>' +
+  return '<div class="lock">🔒 무기명 · 마감 전까지는 다시 바꿀 수 있어요. <b>' + ruleSel(p) + '</b>' + ((p.votes || 1) > 1 ? ' (최대 ' + q.n + '명까지 고를 수 있어요)' : '') + '</div>' +
     '<section class="card"><h3>' + esc(p.series) + '에 어울리는 사람을 골라 주세요</h3><div class="opts">' + q.options.map(function (o) {
       var c = byId[o.id];
       return '<div class="vopt">' + optBtn(v, q, o, sel, c && c.count ? '추천 ' + c.count : '') +
@@ -1142,7 +1178,7 @@ function adminSelHTML(v) {
     '<section class="card"><dl class="info"><dt>방식</dt><dd>선정하기 · ' + ruleSel(p) + ' · 무기명 · ' + (p.nominate ? '멤버가 후보 추천' : '관리자가 후보 지정') + '</dd>' +
     '<dt>투표 기간</dt><dd>' + (p.voteStart ? fmtT(p.voteStart) : '(버튼으로 시작)') + ' ~ ' + (p.voteEnd ? fmtT(p.voteEnd) : '(버튼으로 마감)') + '</dd>' +
     '<dt>상태</dt><dd>' + (isOpen ? '진행 중' : '보관됨' + (p.published ? ' (멤버는 결과를 볼 수 있음)' : '')) + '</dd>' +
-    '<dt>비밀번호</dt><dd>' + esc(p.pw) + '</dd><dt>링크</dt><dd>' + esc(inviteLink(p)) + '</dd></dl>' +
+    '<dt>비밀번호</dt><dd>' + pwInfo(p) + '</dd><dt>링크</dt><dd>' + esc(inviteLink(p)) + '</dd></dl>' +
     '<div class="acts">' + ctl.join('') + (isOpen ? '<button class="btn sm" data-act="copyInvite">초대 문구 복사</button>' : '') +
     '<button class="btn sm" data-act="editProject" data-id="' + p.id + '">수정</button>' +
     '<button class="btn sm" data-act="copyProject" data-id="' + p.id + '">다음 회차 만들기</button>' +
@@ -1202,7 +1238,7 @@ function showSelEditor(keepScroll) {
     '<datalist id="serList">' + ser.map(function (s) { return '<option value="' + esc(s) + '">'; }).join('') + '</datalist>' +
     '<p class="hint" id="roundHint">' + (e.series ? '→ <b>' + esc(e.series) + ' ' + (e.id ? (S.admin.projects.filter(function (p) { return p.id === e.id; })[0] || {}).round || rnd : rnd) + '회</b>' + (rnd > 1 && !e.id ? ' (지난 ' + (rnd - 1) + '회까지의 결과를 멤버가 볼 수 있어요)' : '') : '이름을 넣으면 몇 회째인지 보여요.') + '</p>' +
     '<label class="lb">안내</label><textarea class="inp" data-bind="desc" rows="3" maxlength="1000">' + esc(e.desc) + '</textarea>' +
-    '<label class="lb">참가자 비밀번호 <small>숫자 4~8자리</small></label><input class="inp pw" data-bind="pw" inputmode="numeric" maxlength="8" value="' + esc(e.pw) + '"></section>' +
+    '<label class="lb">초대 비밀번호 <small>숫자 4~8자리 · 멤버는 휴대폰 뒷자리 4자리로 들어오고, 번호 없는 사람과 새로 가입하는 사람이 이걸 써요</small></label><input class="inp pw" data-bind="pw" inputmode="numeric" maxlength="8" value="' + esc(e.pw) + '"></section>' +
     '<section class="card"><h3>멤버 <small id="nameCount">' + countNames(e.names) + '</small></h3>' +
     '<textarea class="inp" data-bind="names" rows="6" placeholder="한 줄에 한 명씩&#10;홍길동 010-1234-5678&#10;김철수 010-2222-3333">' + esc(e.names) + '</textarea>' +
     '<p class="hint" style="margin:-4px 0 10px">전화번호를 같이 적으면 만든 뒤 [문자]로 바로 초대할 수 있어요. 번호는 관리자만 봐요.</p>' +
@@ -1314,22 +1350,53 @@ var ACT = {
     S.join.name = el.dataset.name; S.join.isNew = false;
     document.querySelectorAll('.names .chip').forEach(function (c) { c.classList.toggle('on', c === el); });
     $('#newBox').style.display = 'none';
+    if (pinMode(S.join.p)) { $('#pwH').textContent = '2. 내 비밀번호'; $('#pwHint').innerHTML = '처음엔 <b>휴대폰 번호 뒷자리 4자리</b>예요. 들어간 뒤 [비밀번호 바꾸기]로 바꿀 수 있어요.'; }
     $('#pw').focus();
   },
   newName: function (el) {
     S.join.isNew = true; S.join.name = '';
     document.querySelectorAll('.names .chip').forEach(function (c) { c.classList.toggle('on', c === el); });
     $('#newBox').style.display = ''; $('#newName').focus();
+    if (pinMode(S.join.p)) { $('#pwH').textContent = '2. 초대 비밀번호'; $('#pwHint').innerHTML = '초대 문자에 적힌 비밀번호를 넣어 주세요. 가입한 뒤에는 <b>휴대폰 뒷자리 4자리</b>가 내 비밀번호가 돼요.'; $('#newPhone').placeholder = '휴대폰 번호 (꼭 넣어 주세요) 010-0000-0000'; }
   },
   enter: function (el) { doEnter(el); },
   logout: function () {
     var go = dirty() ? ask('저장하지 않은 선택이 있어요. 그래도 나갈까요?', '나가기') : Promise.resolve(true);
     go.then(function (ok) { if (!ok) return; var pid = S.view.project.id; forget(pid); S.view = null; showJoin(pid); });
   },
-  tab: function (el) { S.tab = el.dataset.tab; showProject(false); },
+  tab: function (el) { S.tab = el.dataset.tab; S.changing = false; showProject(false); },
   pick: function (el) { pick(el.dataset.q, el.dataset.o); },
   save: function (el) { save(el); },
   vote: function (el) { vote(el); },
+  changeVote: function () { S.changing = true; resetDraft(); showProject(true); },
+  changePin: function () {
+    var v = S.view, m = document.getElementById('modal');
+    m.innerHTML = '<div class="dim"><div class="dlg"><p><b>내 비밀번호 바꾸기</b><br><small>관리자도 알 수 없게 저장돼요. 잊으면 관리자에게 초기화를 부탁하세요.</small></p>' +
+      '<input id="cp0" class="inp pw" type="password" inputmode="numeric" maxlength="8" placeholder="지금 비밀번호">' +
+      '<input id="cp1" class="inp pw" type="password" inputmode="numeric" maxlength="8" placeholder="새 비밀번호 (숫자 4~8자리)">' +
+      '<input id="cp2" class="inp pw" type="password" inputmode="numeric" maxlength="8" placeholder="새 비밀번호 한 번 더">' +
+      '<p class="err" id="cpErr"></p><div class="dlg-b"><button class="btn" id="mNo">취소</button><button class="btn pri" id="mOk">바꾸기</button></div></div></div>';
+    m.querySelector('#cp0').value = S.pw;
+    m.querySelector('#mNo').onclick = function () { m.innerHTML = ''; };
+    m.querySelector('#mOk').onclick = function () {
+      var a = $('#cp0').value.trim(), b = $('#cp1').value.trim(), c = $('#cp2').value.trim(), err = $('#cpErr');
+      if (!/^\d{4,8}$/.test(b)) { err.textContent = '새 비밀번호는 숫자 4~8자리예요.'; return; }
+      if (b !== c) { err.textContent = '두 번 넣은 새 비밀번호가 달라요.'; return; }
+      var btn = m.querySelector('#mOk');
+      busy(btn, function () {
+        return call('apiChangePin', v.project.id, v.me, a, b).then(function () {
+          S.pw = b; remember(v.project.id, v.me, b); m.innerHTML = ''; toast('비밀번호를 바꿨어요.');
+        }, function (e) { err.textContent = e.message; });
+      });
+    };
+  },
+  resetPin: function (el) {
+    var n = el.dataset.name;
+    ask(n + ' 님의 비밀번호를 처음 상태(휴대폰 뒷자리 4자리)로 되돌릴까요?', '초기화').then(function (ok) {
+      if (!ok) return;
+      busy(el, function () { return call('apiResetPin', S.adminPw, n).then(function () { toast('초기화했어요. 휴대폰 뒷자리 4자리로 들어오면 돼요.'); return adminView(S.aview.project.id, true); }); });
+    });
+  },
   tpl: function (el) { applyTemplate(el.dataset.k); },
   addRoster: function (el) {
     var names = rosterNames(S.edit.names);
